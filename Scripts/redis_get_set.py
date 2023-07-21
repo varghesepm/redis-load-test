@@ -40,10 +40,7 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            if not length:
-                length= ''
-            else:
-                length = len(result)
+            length = randint(1,3)
             events.request_failure.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length, exception=e)
         else:
@@ -63,10 +60,7 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            if not length:
-                length= ''
-            else:
-                length = len(result)
+            length = randint(1,3)
             events.request_failure.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length, exception=e)
         else:
