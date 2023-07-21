@@ -3,8 +3,6 @@
 """
 This is a script to Get and Set key in Redis Server for load testing.
 This script will use locust as framework.
-
-Author:- OpsTree Solutions
 """
 
 from random import randint
@@ -42,12 +40,12 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_failure.fire(
+            events.request.fire(
                 request_type=command, name=key, response_time=total_time, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
             length = len(result)
-            events.request_success.fire(
+            events.request.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length)
         return result
 
@@ -61,12 +59,12 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_failure.fire(
+            events.request.fire(
                 request_type=command, name=key, response_time=total_time, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
             length = 1
-            events.request_success.fire(
+            events.request.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length)
         return result
 
