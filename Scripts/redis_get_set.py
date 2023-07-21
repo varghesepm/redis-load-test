@@ -27,8 +27,8 @@ configs = load_config(filename)
 
 
 class RedisClient(object):
-    def __init__(self, host=configs["redis_host"], port=configs["redis_port"], password=configs["redis_password"]):
-        self.rc = redis.StrictRedis(host=host, port=port, password=password)
+    def __init__(self, host=configs["redis_host"], port=configs["redis_port"]):
+        self.rc = redis.StrictRedis(host=host, port=port)
 
     def query(self, key, command='GET'):
         """Function to Test GET operation on Redis"""
@@ -40,12 +40,12 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request.fire(
+            events.request_failure.fire(
                 request_type=command, name=key, response_time=total_time, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
             length = len(result)
-            events.request.fire(
+            events.request_success.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length)
         return result
 
@@ -59,12 +59,12 @@ class RedisClient(object):
                 result = ''
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request.fire(
+            events.request_failure.fire(
                 request_type=command, name=key, response_time=total_time, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
             length = 1
-            events.request.fire(
+            events.request_success.fire(
                 request_type=command, name=key, response_time=total_time, response_length=length)
         return result
 
