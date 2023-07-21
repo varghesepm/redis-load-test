@@ -1,3 +1,4 @@
 locust==2.7.3
 argparse
 redis
+kubernetes
