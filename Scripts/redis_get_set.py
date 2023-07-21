@@ -1,101 +1,77 @@
-#!/usr/bin/python3
-## pylint: disable = invalid-name, too-few-public-methods
-"""
-This is a script to Get and Set key in Redis Server for load testing.
-This script will use locust as framework.
-"""
-
-from random import randint
-import json
-import time
-from locust import User, events, TaskSet, task, constant
+from locust import HttpUser, TaskSet, task
+from kubernetes import client, config
 import redis
-import gevent.monkey
-gevent.monkey.patch_all()
+import socket
 
+class RedisSentinelTaskSet(TaskSet):
+    def on_start(self):
+        self.k8s_config = config.load_incluster_config()  # Assumes you're running in a Kubernetes pod
 
-def load_config(filepath):
-    """For loading the connection details of Redis"""
-    with open(filepath) as property_file:
-        configs = json.load(property_file)
-    return configs
+    def get_redis_sentinel_info(self):
+        v1 = client.CoreV1Api()
+        sentinel_service_name = "int-redis-tester"  # Change this to your Redis Sentinel service name
+        # namespace = "your-namespace"  # Change this to your Kubernetes namespace
 
+        # service_info = v1.read_namespaced_service(name=sentinel_service_name, namespace=namespace)
+        service_info = v1.read_namespaced_service(name=sentinel_service_name)
 
-filename = "redis.json"
+        sentinel_hosts = []
+        for endpoint in service_info.spec.ports:
+            sentinel_hosts.append(
+                {
+                    "host": socket.gethostbyname(endpoint.name),
+                    "port": endpoint.port,
+                    # "password": "your_sentinel_password",  # Change this to your Redis Sentinel password
+                }
+            )
 
-configs = load_config(filename)
+        return sentinel_hosts
 
+    def connect_sentinel(self):
+        sentinel_hosts = self.get_redis_sentinel_info()
+        self.sentinel = redis.StrictRedis(
+            host=sentinel_hosts[0]['host'],
+            port=sentinel_hosts[0]['port'],
+            # password=sentinel_hosts[0]['password'],
+            db=0,
+            decode_responses=True,
+        )
 
-class RedisClient(object):
-    def __init__(self, host=configs["redis_host"], port=configs["redis_port"]):
-        self.rc = redis.StrictRedis(host=host, port=port)
+    def get_master(self):
+        self.master = self.sentinel.sentinel_master("mymaster")  # Change this to your master service name
+        return self.master
 
-    def query(self, key, command='GET'):
-        """Function to Test GET operation on Redis"""
-        result = None
-        start_time = time.time()
-        try:
-            result = self.rc.get(key)
-            if not result:
-                result = ''
-        except Exception as e:
-            total_time = int((time.time() - start_time) * 1000)
-            length = randint(1,3)
-            events.request_failure.fire(
-                request_type=command, name=key, response_time=total_time, response_length=length, exception=e)
-        else:
-            total_time = int((time.time() - start_time) * 1000)
-            length = len(result)
-            events.request_success.fire(
-                request_type=command, name=key, response_time=total_time, response_length=length)
-        return result
-
-    def write(self, key, value, command='SET'):
-        """Function to Test SET operation on Redis"""
-        result = None
-        start_time = time.time()
-        try:
-            result = self.rc.set(key, value)
-            if not result:
-                result = ''
-        except Exception as e:
-            total_time = int((time.time() - start_time) * 1000)
-            length = randint(1,3)
-            events.request_failure.fire(
-                request_type=command, name=key, response_time=total_time, response_length=length, exception=e)
-        else:
-            total_time = int((time.time() - start_time) * 1000)
-            length = 1
-            events.request_success.fire(
-                request_type=command, name=key, response_time=total_time, response_length=length)
-        return result
-
-
-class RedisLocust(User):
-    wait_time = constant(0.1)
-    key_range = 500
-
-    def __init__(self, *args, **kwargs):
-        super(RedisLocust, self).__init__(*args, **kwargs)
-        self.client = RedisClient()
-        self.key = 'key1'
-        self.value = 'value1'
-
-    @task(2)
-    def get_time(self):
-        for i in range(self.key_range):
-            self.key = 'key'+str(i)
-            self.client.query(self.key)
+    def get_redis_connection(self, host, port, password=None, db=0):
+        return redis.StrictRedis(
+            host=host,
+            port=port,
+            # password=password,
+            db=db,
+            decode_responses=True,
+        )
 
     @task(1)
-    def write(self):
-        for i in range(self.key_range):
-            self.key = 'key'+str(i)
-            self.value = 'value'+str(i)
-            self.client.write(self.key, self.value)
+    def read_value_from_redis(self):
+        master_instance = self.get_master()
+        master_redis = self.get_redis_connection(
+            host=master_instance['ip'],
+            port=master_instance['port'],
+            # password="your_master_redis_password",  # Change this to your master Redis password
+        )
+        value = master_redis.get("example_key")
+        print("Value from master:", value)
 
     @task(1)
-    def get_key(self):
-        var = str(randint(1, self.key_range-1))
-        self.key = 'key'+var
-        self.value = 'value'+var
+    def write_value_to_redis(self):
+        master_instance = self.get_master()
+        master_redis = self.get_redis_connection(
+            host=master_instance['ip'],
+            port=master_instance['port'],
+            # password="your_master_redis_password",  # Change this to your master Redis password
+        )
+        master_redis.set("example_key", "example_value")
+
+class RedisSentinelK8sLoadTest(HttpUser):
+    tasks = [RedisSentinelTaskSet]
+    min_wait = 1000
+    max_wait = 5000
